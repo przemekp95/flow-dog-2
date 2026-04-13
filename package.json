@@ -1,0 +1,11 @@
+{
+    "name": "flowdog-order-api",
+    "private": true,
+    "devDependencies": {
+        "prettier": "^3.6.2"
+    },
+    "scripts": {
+        "format:check": "prettier --check \"**/*.{md,json,yml,yaml}\"",
+        "format:write": "prettier --write \"**/*.{md,json,yml,yaml}\""
+    }
+}

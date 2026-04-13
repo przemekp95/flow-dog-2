@@ -1,0 +1,11 @@
+.git
+.github
+.phpunit.cache
+.env.local
+.env.*.local
+.env.dev
+.env.test
+node_modules
+var
+vendor
+orders.log

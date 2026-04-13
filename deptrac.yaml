@@ -1,0 +1,62 @@
+deptrac:
+    paths:
+        - ./src
+    exclude_files:
+        - '#.*src/Kernel\.php$#'
+        - '#.*src/Controller/.*#'
+    layers:
+        - name: SharedDomain
+          collectors:
+              - type: directory
+                value: src/Shared/Domain/.*
+        - name: SharedUi
+          collectors:
+              - type: directory
+                value: src/Shared/UI/.*
+        - name: Symfony
+          collectors:
+              - type: classNameRegex
+                value: '#^Symfony\\.*#'
+        - name: ApiDocumentation
+          collectors:
+              - type: classNameRegex
+                value: '#^OpenApi\\.*#'
+              - type: classNameRegex
+                value: '#^Nelmio\\.*#'
+        - name: Domain
+          collectors:
+              - type: directory
+                value: src/Order/Domain/.*
+        - name: Application
+          collectors:
+              - type: directory
+                value: src/Order/Application/.*
+        - name: Infrastructure
+          collectors:
+              - type: directory
+                value: src/Order/Infrastructure/.*
+        - name: Ui
+          collectors:
+              - type: directory
+                value: src/Order/UI/.*
+    ruleset:
+        SharedUi:
+            - SharedDomain
+            - Symfony
+            - ApiDocumentation
+        SharedDomain: []
+        Symfony: []
+        ApiDocumentation: []
+        Domain:
+            - SharedDomain
+        Application:
+            - Domain
+        Infrastructure:
+            - Domain
+            - Application
+            - Symfony
+        Ui:
+            - Application
+            - SharedUi
+            - Symfony
+            - ApiDocumentation

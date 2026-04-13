@@ -1,0 +1,89 @@
+name: CI
+
+on:
+    push:
+    pull_request:
+
+env:
+    PHP_VERSION: '8.4.20'
+    PHP_VERSION_ID: '80420'
+
+jobs:
+    qa:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ env.PHP_VERSION }}
+                  coverage: none
+
+            - name: Assert PHP patch version
+              run: php -r "if ((string) PHP_VERSION_ID !== getenv('PHP_VERSION_ID')) { fwrite(STDERR, 'Expected PHP '.getenv('PHP_VERSION').', got '.PHP_VERSION.PHP_EOL); exit(1);} echo 'Using PHP '.PHP_VERSION.PHP_EOL;"
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+                  cache: npm
+
+            - name: Validate Composer
+              run: composer validate --strict
+
+            - name: Install PHP dependencies
+              run: composer install --no-interaction --prefer-dist --no-progress
+
+            - name: Install Node dependencies
+              run: npm ci
+
+            - name: Run PHPUnit
+              run: php bin/phpunit
+
+            - name: Run PHPStan
+              run: php vendor/bin/phpstan analyse --memory-limit=1G
+
+            - name: Run PHP CS Fixer
+              run: php vendor/bin/php-cs-fixer fix --dry-run --diff --verbose
+
+            - name: Run Deptrac
+              run: php vendor/bin/deptrac analyse --no-progress
+
+            - name: Run Prettier
+              run: npm run format:check
+
+            - name: Run Composer audit
+              run: composer audit
+
+            - name: Build Docker image
+              run: docker build -t flowdog-order-api:ci .
+
+            - name: Smoke test Docker image
+              run: |
+                  bash scripts/docker_smoke_test.sh \
+                    --image flowdog-order-api:ci \
+                    --host-port 18080 \
+                    --app-env dev \
+                    --app-secret ci-secret-not-for-production \
+                    --openapi-output /tmp/openapi.json
+
+            - name: Trivy filesystem scan
+              uses: aquasecurity/trivy-action@v0.35.0
+              with:
+                  scan-type: fs
+                  scan-ref: .
+                  vuln-type: os,library
+                  scanners: vuln,secret,misconfig
+                  severity: HIGH,CRITICAL
+                  exit-code: '1'
+
+            - name: Trivy image scan
+              uses: aquasecurity/trivy-action@v0.35.0
+              with:
+                  image-ref: flowdog-order-api:ci
+                  severity: HIGH,CRITICAL
+                  exit-code: '1'
+                  skip-setup-trivy: true
