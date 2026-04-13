@@ -74,6 +74,7 @@ jobs:
               with:
                   scan-type: fs
                   scan-ref: .
+                  skip-dirs: vendor,node_modules,var,public/bundles
                   vuln-type: os,library
                   scanners: vuln,secret,misconfig
                   severity: HIGH,CRITICAL
