@@ -19,7 +19,7 @@ final readonly class FileOrderRepository implements OrderRepository
         $this->ensureStorageDirectoryExists();
 
         $targetFile = $this->storageDirectory.'/'.$order->id.'.json';
-        if (is_dir($targetFile)) {
+        if (file_exists($targetFile)) {
             throw new \RuntimeException(sprintf('Order "%s" could not be saved.', $order->id));
         }
 
@@ -38,7 +38,8 @@ final readonly class FileOrderRepository implements OrderRepository
                 LOCK_EX,
             );
 
-            if (false === $bytesWritten || !rename($temporaryFile, $targetFile)) {
+            // Create the final file atomically without allowing overwrites.
+            if (false === $bytesWritten || !link($temporaryFile, $targetFile) || !unlink($temporaryFile)) {
                 throw new \RuntimeException(sprintf('Order "%s" could not be saved.', $order->id));
             }
 

@@ -1,0 +1,14 @@
+services:
+  app:
+    image: ${IMAGE_REF:-flowdog-order-api:prod}
+    container_name: flowdog-order-api
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${APP_PORT:-8082}:8080'
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: 0
+      APP_SECRET: ${APP_SECRET:?APP_SECRET is required}
+      DEFAULT_URI: ${DEFAULT_URI:?DEFAULT_URI is required}
+    volumes:
+      - ${ORDERS_DATA_DIR:-./data/orders}:/app/var/orders

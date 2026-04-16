@@ -24,7 +24,7 @@ Szczegóły decyzji są opisane krótko w ADR-ach: [`001-use-symfony-and-light-h
 
 - persystencja nadal jest plikowa zamiast bazodanowej
 - katalog produktów nadal jest in-memory i istnieje tylko na potrzeby tego use case'u
-- `OrderCreated` jest publikowany synchronicznie jako prosty punkt rozszerzeń
+- `OrderCreated` jest publikowany synchronicznie jako prosty punkt rozszerzeń; obecnie nie ma jeszcze żadnych subscriberów i event pełni rolę przygotowanego hooka pod dalszy rozwój
 - ceny są prostymi liczbami całkowitymi
 - nie dodawałem autoryzacji, idempotency key, outboxa, rezerwacji stocku ani rozbudowanej obserwowalności
 
@@ -39,22 +39,59 @@ W wersji produkcyjnej zamieniłbym repozytorium plikowe na `PostgreSQL`, wprowad
 ### Docker
 
 ```bash
-docker compose up --build
+docker compose up --build --pull always
 ```
 
 API będzie dostępne pod `http://localhost:8080/orders`, a Swagger UI pod `http://localhost:8080/api/doc`.
+Domyślny lokalny `DEFAULT_URI` jest ustawiony na `http://localhost:8080`, żeby OpenAPI i Swagger `Try it out` wskazywały ten sam adres, pod którym kontener i lokalny serwer są faktycznie wystawione.
+
+Domyślny final image z `Dockerfile` jest runtime'em produkcyjnym: ustawia `APP_ENV=prod`, nie instaluje dev dependencies i nie pakuje katalogu `tests` do artefaktu release. `compose.yaml` nadal uruchamia ten obraz lokalnie z `APP_ENV=dev`, a target `qa` jest używany tylko do kontenerowych testów.
+
+Runtime dodatkowo przycina artefakt tylko do tego, co jest potrzebne w tej aplikacji: nie kopiuje `.env` ani lokalnych plików `templates` (zostawia tylko pusty katalog dla Twiga), zostawia wyłącznie cache produkcyjny oraz usuwa niewykorzystywane UI-e dokumentacji (`Scalar`, `Stoplight`, `Redocly`) i source mapy Swagger UI.
 
 `compose.yaml` wstrzykuje dev-only `APP_SECRET` w runtime. Sam obraz nie bake'uje sekretów i nie kopiuje plików `.env.dev` / `.env.test` do kontekstu buildu.
 
 Jeżeli chcesz uruchomić obraz bez Compose:
 
 ```bash
-docker build -t flowdog-order-api:local .
+docker build --pull -t flowdog-order-api:local .
 docker run --rm \
   -p 8080:8080 \
-  -e APP_ENV=dev \
-  -e APP_SECRET=dev-secret-not-for-production \
+  -e APP_ENV=prod \
+  -e APP_SECRET=prod-secret-for-local-demo \
+  -e DEFAULT_URI=http://localhost:8080 \
   flowdog-order-api:local
+```
+
+### Produkcyjnie za reverse proxy
+
+Repo zawiera też `compose.prod.yaml` pod prosty deployment gotowego obrazu za reverse proxy. Ten wariant bindowany jest tylko do `127.0.0.1`, wymaga jawnego `DEFAULT_URI` i zapisuje zamówienia do trwałego volume/bind mounta.
+
+Przykładowe `.env`:
+
+```dotenv
+APP_SECRET=replace-me
+DEFAULT_URI=https://example.com
+APP_PORT=8082
+IMAGE_REF=flowdog-order-api:prod
+ORDERS_DATA_DIR=./data/orders
+```
+
+Uruchomienie:
+
+```bash
+docker compose --env-file .env -f compose.prod.yaml up -d
+```
+
+W tym trybie `DEFAULT_URI` powinno wskazywać publiczny adres za TLS, bo trafia też do `servers[]` w OpenAPI.
+Publiczny smoke test odpalaj przez `https://`, nie `http://`. Domena po HTTP może robić redirect do HTTPS, a zwykły klient HTTP może wtedy zgubić semantykę `POST`.
+
+Szybki test wdrożonej instancji:
+
+```bash
+make public-smoke BASE_URL=https://example.com
+# or:
+bash scripts/public_smoke_test.sh --base-url https://example.com
 ```
 
 ### Lokalnie
@@ -66,6 +103,8 @@ composer install
 php bin/phpunit
 php -S 0.0.0.0:8080 -t public
 ```
+
+Lokalny serwer też korzysta z domyślnego `DEFAULT_URI=http://localhost:8080`, więc `/api/doc` i `/api/doc.json` są spójne z adresem z README.
 
 Opcjonalnie możesz włączyć lokalne hooki git:
 
@@ -220,6 +259,18 @@ make qa-ci
 
 Target `qa-ci` najpierw sprawdza lokalne narzędzia (`php`, `composer`, `npm`, `docker`, `curl`) i obecność zależności projektu. Jeśli czegoś brakuje, próbuje doinstalować brakujące pakiety przez dostępny package manager oraz uruchamia `composer install` / `npm ci` przed właściwymi krokami QA.
 
+Jeżeli chcesz uruchomić testy PHP w kontenerze zamiast na hoście, użyj dedykowanego targetu QA:
+
+```bash
+make docker-test
+```
+
+Jeżeli chcesz sprawdzić już wdrożoną, publicznie dostępną instancję pod kątem `/api/doc.json` i przykładowego `POST /orders`, użyj:
+
+```bash
+make public-smoke BASE_URL=https://example.com
+```
+
 Jeżeli chcesz odpalić kroki ręcznie, podstawowy zestaw komend używanych w repo wygląda tak:
 
 ```bash
@@ -231,17 +282,18 @@ php vendor/bin/deptrac analyse --no-progress
 npm ci
 composer audit
 npm run format:check
-docker build -t flowdog-order-api:ci .
+docker build --pull --target runtime -t flowdog-order-api:ci .
 ```
 
 W `CI` dochodzą jeszcze:
 
 - jawny check patch version dla `PHP 8.4.20`,
-- smoke test uruchomionego kontenera pod `GET /api/doc.json`,
+- smoke test produkcyjnego runtime image pod `GET /api/doc.json`,
+- asercja, że runtime image domyślnie startuje z `APP_ENV=prod` i nie zawiera dev-only artefaktów, takich jak `vendor/bin/phpunit` czy katalog `tests`,
 - skan `Trivy` typu filesystem dla repo,
 - skan `Trivy` zbudowanego obrazu Docker.
 
-Osobny workflow `Release` uruchamia się dla tagów `v*`, buduje obraz, skanuje go i publikuje tagi do `GHCR`.
+Osobny workflow `Release` uruchamia się dla tagów `v*`, buduje produkcyjny target `runtime`, skanuje go i publikuje tagi do `GHCR`.
 
 ## ADR
 

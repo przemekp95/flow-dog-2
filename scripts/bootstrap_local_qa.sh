@@ -21,6 +21,36 @@ have_command() {
     command -v "$1" >/dev/null 2>&1
 }
 
+resolve_php_bin() {
+    if [[ -x "${PROJECT_DIR}/scripts/resolve_php_bin.sh" ]]; then
+        "${PROJECT_DIR}/scripts/resolve_php_bin.sh"
+        return 0
+    fi
+
+    return 1
+}
+
+have_php_runtime() {
+    resolve_php_bin >/dev/null 2>&1
+}
+
+have_composer_runtime() {
+    if [[ -x "${PROJECT_DIR}/scripts/run_composer.sh" ]]; then
+        "${PROJECT_DIR}/scripts/run_composer.sh" --version >/dev/null 2>&1
+        return 0
+    fi
+
+    return 1
+}
+
+have_fetch_runtime() {
+    if have_command curl; then
+        return 0
+    fi
+
+    have_php_runtime
+}
+
 run_privileged() {
     if have_command sudo; then
         sudo "$@"
@@ -171,13 +201,11 @@ install_missing_tooling() {
 
 ensure_tooling() {
     local missing=()
-    local tool
-
-    for tool in php composer npm docker curl; do
-        if ! have_command "$tool"; then
-            missing+=("$tool")
-        fi
-    done
+    have_php_runtime || missing+=("php")
+    have_composer_runtime || missing+=("composer")
+    have_command npm || missing+=("npm")
+    have_command docker || missing+=("docker")
+    have_fetch_runtime || missing+=("curl-or-php-fetch")
 
     if [[ ${#missing[@]} -eq 0 ]]; then
         log 'Required tooling is already installed.'
@@ -212,7 +240,10 @@ ensure_docker_available() {
 ensure_php_patch_hint() {
     local current_version_id
 
-    current_version_id="$(php -r 'echo PHP_VERSION_ID;')"
+    local php_bin
+    php_bin="$(resolve_php_bin)" || fail 'PHP runtime is not available.'
+
+    current_version_id="$("$php_bin" -r 'echo PHP_VERSION_ID;')"
     if [[ "${current_version_id}" != "${PHP_EXPECTED_VERSION_ID}" ]]; then
         log "PHP is installed, but expected ${PHP_EXPECTED_VERSION}. The dedicated patch check in qa-ci may still fail."
     fi
@@ -229,7 +260,7 @@ ensure_php_dependencies() {
     log 'Installing PHP dependencies with composer install.'
     (
         cd "${PROJECT_DIR}"
-        composer install --no-interaction --prefer-dist --no-progress
+        bash scripts/run_composer.sh install --no-interaction --prefer-dist --no-progress
     )
 }
 

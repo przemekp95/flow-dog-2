@@ -44,16 +44,21 @@ final class FileOrderRepositoryTest extends TestCase
         self::assertSame([], $temporaryFiles);
     }
 
-    public function testItThrowsWhenTargetFileCannotBeWritten(): void
+    public function testItThrowsWhenTargetFileAlreadyExistsAndDoesNotOverwriteIt(): void
     {
         $repository = new FileOrderRepository($this->storageDirectory);
         mkdir($this->storageDirectory, 0777, true);
-        mkdir($this->storageDirectory.'/'.self::ORDER_ID.'.json');
+        $targetFile = $this->storageDirectory.'/'.self::ORDER_ID.'.json';
+        file_put_contents($targetFile, "{\"existing\":true}\n");
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(sprintf('Order "%s" could not be saved.', self::ORDER_ID));
 
-        $repository->save($this->createOrder());
+        try {
+            $repository->save($this->createOrder());
+        } finally {
+            self::assertSame("{\"existing\":true}\n", file_get_contents($targetFile));
+        }
     }
 
     private function createOrder(): Order

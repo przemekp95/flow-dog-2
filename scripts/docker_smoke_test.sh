@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 image_ref="flowdog-order-api:local"
 host_port="18080"
-app_env="dev"
+app_env="prod"
 app_secret="local-smoke-secret-not-for-production"
 openapi_output="/tmp/flowdog-openapi.json"
 

@@ -57,15 +57,38 @@ jobs:
             - name: Run Composer audit
               run: composer audit
 
-            - name: Build Docker image
-              run: docker build -t flowdog-order-api:ci .
+            - name: Build Docker runtime image
+              run: docker build --pull --target runtime -t flowdog-order-api:ci .
+
+            - name: Assert runtime image defaults to prod and excludes dev-only files
+              run: |
+                  docker run --rm flowdog-order-api:ci sh -lc '
+                    [ "$APP_ENV" = "prod" ] &&
+                    [ "$APP_DEBUG" = "0" ] &&
+                    [ ! -e /app/.env ] &&
+                    [ ! -e /app/vendor/bin/phpunit ] &&
+                    [ ! -d /app/vendor/bin ] &&
+                    [ ! -d /app/vendor/nelmio/api-doc-bundle/public ] &&
+                    [ -d /app/templates ] &&
+                    [ -z "$(ls -A /app/templates)" ] &&
+                    [ ! -d /app/tests ] &&
+                    [ ! -d /app/docs ] &&
+                    [ ! -d /app/public/bundles/nelmioapidoc/redocly ] &&
+                    [ ! -d /app/public/bundles/nelmioapidoc/scalar ] &&
+                    [ ! -d /app/public/bundles/nelmioapidoc/stoplight ] &&
+                    [ ! -e /app/public/bundles/nelmioapidoc/init-redocly-ui.js ] &&
+                    [ ! -e /app/public/bundles/nelmioapidoc/swagger-ui/swagger-ui-bundle.js.map ] &&
+                    [ ! -e /app/public/bundles/nelmioapidoc/swagger-ui/swagger-ui-standalone-preset.js.map ] &&
+                    [ ! -e /app/public/bundles/nelmioapidoc/swagger-ui/swagger-ui.css.map ] &&
+                    [ -d /app/var/cache/prod ]
+                  '
 
             - name: Smoke test Docker image
               run: |
                   bash scripts/docker_smoke_test.sh \
                     --image flowdog-order-api:ci \
                     --host-port 18080 \
-                    --app-env dev \
+                    --app-env prod \
                     --app-secret ci-secret-not-for-production \
                     --openapi-output /tmp/openapi.json
 

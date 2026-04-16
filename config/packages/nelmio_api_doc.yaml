@@ -8,7 +8,7 @@ nelmio_api_doc:
             - name: Orders
               description: Order creation endpoints
         servers:
-            - url: http://localhost:8080
+            - url: '%env(DEFAULT_URI)%'
     areas:
         default:
             path_patterns:
